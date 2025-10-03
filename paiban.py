@@ -241,11 +241,10 @@ class AgentViewer:
 
 def download_from_jiananguo():
     try:
-        # 从Streamlit Secrets读取配置
         options = {
-            'webdav_hostname': st.secrets['webdav']['hostname'],
-            'webdav_login': st.secrets['webdav']['login'],
-            'webdav_password': st.secrets['webdav']['password']
+            'webdav_hostname': 'https://dav.jianguoyun.com/dav/',
+            'webdav_login': 'hanyong@foxmail.com',
+            'webdav_password': 'ah5fb6yahy62b8rt'
         }
         
         client = Client(options)
@@ -265,22 +264,21 @@ def download_from_jiananguo():
         return False, None, f"下载失败: {str(e)}"
 
 def create_agent_card(person_info, viewer):
-    """创建坐席信息卡片"""
+    """创建坐席信息卡片 - 简化版确保正确渲染"""
     # 获取状态图标
     status_icon = viewer.status_icons.get(person_info['status'], '❓')
     
     # 统一状态颜色：正在路上和已回家都使用 #BFBFBF
     if person_info['status'] in ["正在路上", "已回家"]:
         status_color = "#BFBFBF"
-        # 当状态为"正在路上"或"已回家"时，整个卡片背景设为灰色
-        bg_color = "#BFBFBF"
     else:
         status_color = person_info['status_color']
-        # 正常情况下的背景色
-        seat_type = person_info['seat']
-        bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
     
-    # 创建HTML卡片
+    # 席位颜色（仅背景色）
+    seat_type = person_info['seat']
+    bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
+    
+    # 创建简化的HTML卡片
     card_html = f"""
     <div style="background-color: {bg_color}; border: 2px solid #000000; border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
         <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -323,6 +321,14 @@ def update_current_time():
     weekday = weekdays[now.weekday()]
     return now.strftime(f"%Y年%m月%d日 {weekday} %H:%M:%S")
 
+def auto_refresh_time(placeholder):
+    while True:
+        if not st.session_state.get('auto_refresh', True):
+            t.sleep(1)
+            continue
+        placeholder.markdown(f"### 当前时间: {update_current_time()}")
+        t.sleep(1)
+
 def main():
     st.set_page_config(
         page_title="综合组在线坐席", 
@@ -349,22 +355,41 @@ def main():
     # 初始化查看器
     viewer = AgentViewer()
     
+    # 首次运行或文件不存在时下载排班文件
+    if st.session_state.file_path is None or not os.path.exists(st.session_state.file_path):
+        with st.spinner("正在下载排班文件..."):
+            download_success, file_path, download_message = download_from_jiananguo()
+            if download_success:
+                st.session_state.file_path = file_path
+                st.session_state.last_download = datetime.now()
+                st.success("排班文件下载成功")
+            else:
+                st.error(f"下载失败: {download_message}")
+                st.stop()
+    
     # 主界面
     st.title("📊 综合组在线坐席")
     
-    # 当前时间显示
-    st.markdown(f"### 当前时间: {update_current_time()}")
-    
     # 顶部控制栏
-    col1, col2 = st.columns([1, 1])
+    col1, col2, col3 = st.columns([3, 1, 1])
     
     with col1:
+        current_datetime = st.empty()
+        if 'time_thread' not in st.session_state:
+            st.session_state.time_thread = threading.Thread(
+                target=auto_refresh_time, 
+                args=(current_datetime,), 
+                daemon=True
+            )
+            st.session_state.time_thread.start()
+    
+    with col2:
         if st.button("🔄 刷新状态", use_container_width=True):
             st.session_state.last_refresh = datetime.now()
             st.session_state.refresh_counter += 1
-            st.rerun()
+            st.success("状态已刷新")
     
-    with col2:
+    with col3:
         if st.button("📥 重新下载班表", use_container_width=True):
             with st.spinner("重新下载班表中..."):
                 download_success, file_path, download_message = download_from_jiananguo()
@@ -374,7 +399,6 @@ def main():
                     st.session_state.schedule_data = None
                     st.session_state.refresh_counter += 1
                     st.success("班表已更新")
-                    st.rerun()
                 else:
                     st.error(f"下载失败: {download_message}")
     
@@ -448,17 +472,6 @@ def main():
     if st.session_state.last_load_date != load_date:
         st.session_state.schedule_data = None
         st.session_state.last_load_date = load_date
-    
-    # 首次运行或文件不存在时下载排班文件
-    if st.session_state.file_path is None or not os.path.exists(st.session_state.file_path):
-        with st.spinner("正在下载排班文件..."):
-            download_success, file_path, download_message = download_from_jiananguo()
-            if download_success:
-                st.session_state.file_path = file_path
-                st.session_state.last_download = datetime.now()
-            else:
-                st.error(f"下载失败: {download_message}")
-                return
     
     # 加载排班数据
     with st.spinner("正在加载坐席数据，请稍候..."):
