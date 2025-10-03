@@ -264,21 +264,22 @@ def download_from_jiananguo():
         return False, None, f"下载失败: {str(e)}"
 
 def create_agent_card(person_info, viewer):
-    """创建坐席信息卡片 - 简化版确保正确渲染"""
+    """创建坐席信息卡片 - 修改为根据状态设置卡片背景色"""
     # 获取状态图标
     status_icon = viewer.status_icons.get(person_info['status'], '❓')
     
     # 统一状态颜色：正在路上和已回家都使用 #BFBFBF
     if person_info['status'] in ["正在路上", "已回家"]:
         status_color = "#BFBFBF"
+        # 当状态为"正在路上"或"已回家"时，整个卡片背景设为灰色
+        bg_color = "#BFBFBF"
     else:
         status_color = person_info['status_color']
+        # 正常情况下的背景色
+        seat_type = person_info['seat']
+        bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
     
-    # 席位颜色（仅背景色）
-    seat_type = person_info['seat']
-    bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
-    
-    # 创建简化的HTML卡片
+    # 创建HTML卡片
     card_html = f"""
     <div style="background-color: {bg_color}; border: 2px solid #000000; border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
         <div style="display: flex; align-items: center; justify-content: space-between;">
